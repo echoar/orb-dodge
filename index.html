@@ -595,7 +595,111 @@
       STATE.score += dt * 3;
     }
 
-    function draw() {
+        function drawPowerupIcon(ctx, kind, x, y, r) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.strokeStyle = '#ffffff';
+      ctx.fillStyle = '#ffffff';
+      ctx.lineWidth = 1.6;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      const s = r * 0.55; // scale
+
+      if (kind === 'nuke') {
+        // Biohazard / Radiation trefoil symbol
+        ctx.beginPath();
+        ctx.arc(0, 0, 2, 0, Math.PI * 2);
+        ctx.fill();
+        for (let i = 0; i < 3; i++) {
+          const a = (i * Math.PI * 2 / 3) - Math.PI / 2;
+          ctx.beginPath();
+          ctx.arc(0, 0, s * 0.95, a - 0.35, a + 0.35);
+          ctx.stroke();
+        }
+      } else if (kind === 'laser') {
+        // Piercing laser beam with targeting crosshair
+        ctx.beginPath();
+        ctx.moveTo(-s, 0); ctx.lineTo(s, 0);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, -s * 0.5); ctx.lineTo(0, s * 0.5);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(0, 0, 1.8, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (kind === 'tesla') {
+        // Geometric lightning bolt
+        ctx.beginPath();
+        ctx.moveTo(1, -s);
+        ctx.lineTo(-s * 0.5, 0);
+        ctx.lineTo(1, 0);
+        ctx.lineTo(-1, s);
+        ctx.lineTo(s * 0.6, -1);
+        ctx.lineTo(1, -1);
+        ctx.closePath();
+        ctx.fill();
+      } else if (kind === 'plasma') {
+        // 3-blade rotating shuriken
+        const t = performance.now() / 400;
+        for (let i = 0; i < 3; i++) {
+          const a = t + (i * Math.PI * 2 / 3);
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(Math.cos(a) * s, Math.sin(a) * s);
+          ctx.lineTo(Math.cos(a + 0.4) * (s * 0.5), Math.sin(a + 0.4) * (s * 0.5));
+          ctx.closePath();
+          ctx.fill();
+        }
+      } else if (kind === 'shockwave') {
+        // Concentric pulse waves
+        ctx.beginPath();
+        ctx.arc(0, 0, 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(0, 0, s * 0.55, -Math.PI * 0.6, Math.PI * 0.6);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(0, 0, s * 0.55, Math.PI * 0.4, Math.PI * 1.6);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(0, 0, s * 0.95, -Math.PI * 0.4, Math.PI * 0.4);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(0, 0, s * 0.95, Math.PI * 0.6, Math.PI * 1.4);
+        ctx.stroke();
+      } else if (kind === 'vortex') {
+        // Spiral / Swirl vortex
+        ctx.beginPath();
+        for (let a = 0; a < Math.PI * 3.5; a += 0.2) {
+          const rad = (a / (Math.PI * 3.5)) * s * 0.9;
+          const px = Math.cos(a) * rad;
+          const py = Math.sin(a) * rad;
+          if (a === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+      } else if (kind === 'ice_nova') {
+        // Crisp 6-branch snowflake
+        for (let i = 0; i < 3; i++) {
+          const a = i * Math.PI / 3;
+          ctx.beginPath();
+          ctx.moveTo(-Math.cos(a) * s, -Math.sin(a) * s);
+          ctx.lineTo(Math.cos(a) * s, Math.sin(a) * s);
+          ctx.stroke();
+        }
+        ctx.beginPath();
+        ctx.arc(0, 0, 1.8, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.beginPath();
+        ctx.arc(0, 0, s * 0.5, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+function draw() {
       const scale = (canvas.width / V_WIDTH);
 
       ctx.save();
@@ -715,12 +819,8 @@
         ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
         ctx.fill();
 
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, r * 0.5, 0, Math.PI * 2);
-        ctx.stroke();
         ctx.restore();
+        drawPowerupIcon(ctx, p.kind, p.x, p.y, r);
       });
 
       // Target reticle & faint tether (Zendoku offset + lerp target)
