@@ -305,13 +305,17 @@
     let swipeStart = null;
     let swipeStartTime = 0;
 
+    const FINGER_OFFSET_Y = 85; // Strict Zendoku offset: orb hovers 85px above finger
+    let rawTouchPos = null;
+
     function getTouchCoords(clientX, clientY) {
       canvasRect = canvas.getBoundingClientRect();
-      const x = ((clientX - canvasRect.left) / canvasRect.width) * V_WIDTH;
-      const y = ((clientY - canvasRect.top) / canvasRect.height) * V_HEIGHT;
+      const rawX = ((clientX - canvasRect.left) / canvasRect.width) * V_WIDTH;
+      const rawY = ((clientY - canvasRect.top) / canvasRect.height) * V_HEIGHT;
+      rawTouchPos = { x: Math.max(0, Math.min(V_WIDTH, rawX)), y: Math.max(0, Math.min(V_HEIGHT, rawY)) };
       return {
-        x: Math.max(0, Math.min(V_WIDTH, x)),
-        y: Math.max(0, Math.min(V_HEIGHT, y))
+        x: rawTouchPos.x,
+        y: Math.max(20, Math.min(V_HEIGHT - 20, rawTouchPos.y - FINGER_OFFSET_Y))
       };
     }
 
@@ -336,6 +340,7 @@
     }
 
     function onEnd(cx, cy) {
+      rawTouchPos = null;
       if (!STATE.touching) return;
       STATE.touching = false;
       const endPt = getTouchCoords(cx, cy);
@@ -664,6 +669,24 @@
         ctx.stroke();
         ctx.restore();
       });
+
+      // Faint tether to touch point (Zendoku feel)
+      if (STATE.touching && rawTouchPos && STATE.alive) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(80, 200, 255, 0.22)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(rawTouchPos.x, rawTouchPos.y);
+        ctx.lineTo(STATE.px, STATE.py);
+        ctx.stroke();
+
+        ctx.fillStyle = 'rgba(80, 200, 255, 0.4)';
+        ctx.beginPath();
+        ctx.arc(rawTouchPos.x, rawTouchPos.y, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
 
       if (STATE.alive) {
         ctx.save();
