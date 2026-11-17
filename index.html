@@ -156,7 +156,7 @@
     };
 
     const PR = 14;
-    const LERP = 10.0;
+    const LERP = 16.0;
     const TRAIL_MAX = 55;
     const TRAIL_DMG = 1;
     const DASH_DIST = 130;
@@ -319,24 +319,67 @@
       };
     }
 
+    let lastTouchX = 0;
+    let lastTouchY = 0;
+    let lastMoveTime = 0;
+
     function onStart(cx, cy) {
-      const pt = getTouchCoords(cx, cy);
+      canvasRect = canvas.getBoundingClientRect();
+      const rawX = ((cx - canvasRect.left) / canvasRect.width) * V_WIDTH;
+      const rawY = ((cy - canvasRect.top) / canvasRect.height) * V_HEIGHT;
+
       if (!STATE.alive && STATE.deathTimer > 0.4) {
         reset();
         return;
       }
+
       STATE.touching = true;
-      STATE.tx = pt.x;
-      STATE.ty = pt.y;
-      swipeStart = pt;
+      lastTouchX = rawX;
+      lastTouchY = rawY;
+      lastMoveTime = performance.now();
+      rawTouchPos = { x: rawX, y: rawY };
+
+      // Base offset: ensure orb is at least 85px above finger on initial touch
+      STATE.tx = STATE.px;
+      STATE.ty = Math.min(STATE.py, rawY - FINGER_OFFSET_Y);
+
+      swipeStart = { x: rawX, y: rawY };
       swipeStartTime = performance.now();
     }
 
     function onMove(cx, cy) {
       if (!STATE.touching) return;
-      const pt = getTouchCoords(cx, cy);
-      STATE.tx = pt.x;
-      STATE.ty = pt.y;
+      canvasRect = canvas.getBoundingClientRect();
+      const rawX = ((cx - canvasRect.left) / canvasRect.width) * V_WIDTH;
+      const rawY = ((cy - canvasRect.top) / canvasRect.height) * V_HEIGHT;
+      const now = performance.now();
+      const dt = Math.max(0.005, (now - lastMoveTime) / 1000);
+
+      const dx = rawX - lastTouchX;
+      const dy = rawY - lastTouchY;
+      const dist = Math.hypot(dx, dy);
+      const speed = dist / dt; // pixels per second
+
+      // Dynamic acceleration curve:
+      // Slow micro-movements (< 180 px/s): 1.0x precision
+      // Fast flicks (> 180 px/s): non-linear ramp up to 3.5x distance
+      let accel = 1.0;
+      if (speed > 180) {
+        accel = 1.0 + Math.min(2.5, Math.pow((speed - 180) / 450, 1.15));
+      }
+
+      STATE.tx += dx * accel;
+      STATE.ty += dy * accel;
+
+      // Clamp target within game zone
+      const zm = STATE.zoneMargin;
+      STATE.tx = Math.max(zm + PR, Math.min(V_WIDTH - zm - PR, STATE.tx));
+      STATE.ty = Math.max(zm + PR + 45, Math.min(V_HEIGHT - zm - PR - 30, STATE.ty));
+
+      lastTouchX = rawX;
+      lastTouchY = rawY;
+      lastMoveTime = now;
+      rawTouchPos = { x: rawX, y: rawY };
     }
 
     function onEnd(cx, cy) {
