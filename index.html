@@ -456,8 +456,18 @@
         STATE.dashFrames--;
         if (STATE.dashFrames <= 0) STATE.dashing = false;
       } else if (STATE.touching) {
-        STATE.px += (STATE.tx - STATE.px) * Math.min(1.0, LERP * dt);
-        STATE.py += (STATE.ty - STATE.py) * Math.min(1.0, LERP * dt);
+        const dx = STATE.tx - STATE.px;
+        const dy = STATE.ty - STATE.py;
+        const dist = Math.hypot(dx, dy);
+        if (dist > 0.5) {
+          // Cap maximum speed so orb doesn't teleport into enemies on fast flicks
+          const MAX_SPEED = 620; // max pixels per second
+          const desiredStep = dist * Math.min(1.0, LERP * dt);
+          const maxStep = MAX_SPEED * dt;
+          const actualStep = Math.min(dist, Math.min(desiredStep, maxStep));
+          STATE.px += (dx / dist) * actualStep;
+          STATE.py += (dy / dist) * actualStep;
+        }
       }
 
       const zm = STATE.zoneMargin;
@@ -713,8 +723,36 @@
         ctx.restore();
       });
 
-      // Faint tether to touch point (Zendoku feel)
-      if (STATE.touching && rawTouchPos && STATE.alive) {
+      // Target reticle & faint tether (Zendoku offset + lerp target)
+      if (STATE.touching && STATE.alive) {
+        ctx.save();
+        // Target destination ring
+        ctx.strokeStyle = 'rgba(80, 200, 255, 0.45)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.arc(STATE.tx, STATE.ty, PR + 3, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Line connecting player orb to destination target
+        ctx.strokeStyle = 'rgba(80, 200, 255, 0.25)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(STATE.px, STATE.py);
+        ctx.lineTo(STATE.tx, STATE.ty);
+        ctx.stroke();
+
+        // Finger touch point anchor
+        if (rawTouchPos) {
+          ctx.fillStyle = 'rgba(80, 200, 255, 0.35)';
+          ctx.beginPath();
+          ctx.arc(rawTouchPos.x, rawTouchPos.y, 4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      if (false && STATE.touching && rawTouchPos && STATE.alive) {
         ctx.save();
         ctx.strokeStyle = 'rgba(80, 200, 255, 0.22)';
         ctx.lineWidth = 1.5;
