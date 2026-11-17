@@ -116,6 +116,14 @@
     resize();
 
     const STATE = {
+      controlMode: 'shmove', // 'shmove' (relative drag + momentum) or 'direct'
+      vx: 0,
+      vy: 0,
+      plasmaActive: 0,
+      plasmaAngle: 0,
+      teslaArcs: [],
+      nukeRing: 0,
+      nukePos: null,
       px: V_WIDTH / 2,
       py: V_HEIGHT / 2,
       tx: V_WIDTH / 2,
@@ -126,7 +134,7 @@
       highScore: getStoredHS(),
       wave: 0,
       waveTimer: 1.0,
-      powerupTimer: 4.0,
+      powerupTimer: 2.8,
       combo: 0,
       comboTimer: 0,
       dashing: false,
@@ -162,10 +170,13 @@
 
     const ENEMY_COLORS = ['#ff3c3c', '#ff6428', '#ff3250', '#dc2828'];
     const PU_COLORS = {
+      nuke: '#ff4400',
+      laser: '#32ff64',
+      tesla: '#00e5ff',
+      plasma: '#ff00aa',
       shockwave: '#ffdc32',
       vortex: '#b432ff',
-      ice_nova: '#64dcff',
-      laser: '#32ff64'
+      ice_nova: '#64dcff'
     };
 
     function reset() {
@@ -490,7 +501,7 @@
       STATE.powerupTimer -= dt;
       if (STATE.powerupTimer <= 0) {
         spawnPowerup();
-        STATE.powerupTimer = 4.8;
+        STATE.powerupTimer = 2.8;
       }
       powerups = powerups.filter(function(p) {
         if (Math.hypot(p.x - STATE.px, p.y - STATE.py) < PR + p.radius) {
