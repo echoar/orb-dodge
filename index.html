@@ -207,6 +207,13 @@
     resize();
 
     const STATE = {
+      mines: [],
+      chronoActive: 0,
+      decoy: null,
+      repulsorPulses: 0,
+      repulsorTimer: 0,
+      missiles: [],
+      railgunSlug: null,
       controlMode: 'shmove', // 'shmove' (relative drag + momentum) or 'direct'
       vx: 0,
       vy: 0,
@@ -269,7 +276,13 @@
       plasma: '#ff00aa',
       shockwave: '#ffdc32',
       vortex: '#b432ff',
-      ice_nova: '#64dcff'
+      ice_nova: '#64dcff',
+      mines: '#ff9900',
+      chrono: '#d946ef',
+      decoy: '#06b6d4',
+      repulsor: '#84cc16',
+      missiles: '#f43f5e',
+      railgun: '#e11d48'
     };
 
     function reset() {
@@ -610,8 +623,14 @@
       trail.forEach(function(t) { t.alpha -= 3.5; });
       trail = trail.filter(function(t) { return t.alpha > 0; });
 
-      const iceFactor = STATE.iceSlowFrames > 0 ? 0.35 : 1.0;
-      if (STATE.iceSlowFrames > 0) {
+      let iceFactor = STATE.iceSlowFrames > 0 ? 0.35 : 1.0;
+      if (STATE.chronoActive > 0) iceFactor *= 0.15; // Chrono slow!
+      if (STATE.chronoActive > 0) {
+        ctx.fillStyle = '#d946ef';
+        ctx.textAlign = 'center';
+        ctx.fillText('⏳ MATRIX TIME', V_WIDTH / 2, yb);
+        ctx.textAlign = 'left';
+      } else if (STATE.iceSlowFrames > 0) {
         STATE.iceSlowFrames--;
         if (STATE.iceSlowFrames === 0) enemies.forEach(function(e) { e.speed /= 0.35; });
       }
@@ -632,8 +651,9 @@
           }
         }
 
-        const dx = STATE.px - e.x;
-        const dy = STATE.py - e.y;
+        const targetPoint = STATE.decoy ? STATE.decoy : { x: STATE.px, y: STATE.py };
+        const dx = targetPoint.x - e.x;
+        const dy = targetPoint.y - e.y;
         const dist = Math.hypot(dx, dy);
         if (dist > 1) {
           e.x += (dx / dist) * e.speed * dt * 60 * iceFactor;
@@ -664,6 +684,128 @@
       });
 
       if (STATE.vortexActive > 0) STATE.vortexActive--;
+
+            // 5. Cluster Mines Update
+      if (STATE.mines && STATE.mines.length > 0) {
+        STATE.mines.forEach(function(m) {
+          m.life--;
+          m.pulse += 0.08;
+          // Check enemy collision
+          enemies.forEach(function(e) {
+            if (e.hp > 0 && Math.hypot(e.x - m.x, e.y - m.y) < m.radius + e.radius + 4) {
+              m.life = 0; // Detonate!
+              // Blast radius 68px
+              enemies.forEach(function(e2) {
+                if (Math.hypot(e2.x - m.x, e2.y - m.y) < 68) {
+                  e2.hp = 0;
+                  spawnParticles(e2.x, e2.y, '#ff9900', 6, 5);
+                  STATE.score += 10;
+                }
+              });
+              spawnParticles(m.x, m.y, '#ffffff', 20, 7);
+            }
+          });
+        });
+        STATE.mines = STATE.mines.filter(function(m) { return m.life > 0; });
+      }
+
+      // 6. Chrono Warp Update
+      if (STATE.chronoActive > 0) STATE.chronoActive--;
+
+      // 7. Decoy Update
+      if (STATE.decoy) {
+        STATE.decoy.life--;
+        STATE.decoy.pulse += 0.1;
+        if (STATE.decoy.life <= 0) {
+          // Explode in 180px frag blast
+          const dx = STATE.decoy.x, dy = STATE.decoy.y;
+          enemies.forEach(function(e) {
+            if (Math.hypot(e.x - dx, e.y - dy) < 180) {
+              e.hp = 0;
+              spawnParticles(e.x, e.y, '#06b6d4', 8, 6);
+              STATE.score += 10;
+            }
+          });
+          spawnParticles(dx, dy, '#ffffff', 35, 9);
+          STATE.decoy = null;
+        }
+      }
+
+      // 8. Sonic Repulsor Pulses
+      if (STATE.repulsorPulses > 0) {
+        STATE.repulsorTimer--;
+        if (STATE.repulsorTimer <= 0) {
+          STATE.repulsorPulses--;
+          STATE.repulsorTimer = 22; // interval
+          spawnParticles(STATE.px, STATE.py, '#84cc16', 22, 8);
+          // Blast enemies away toward edges
+          enemies.forEach(function(e) {
+            const d = Math.hypot(e.x - STATE.px, e.y - STATE.py);
+            if (d < 220 && d > 1) {
+              const push = 18;
+              e.x += ((e.x - STATE.px) / d) * push;
+              e.y += ((e.y - STATE.py) / d) * push;
+              // If slammed into boundary -> shatter!
+              const zm = STATE.zoneMargin;
+              if (e.x <= zm + e.radius + 4 || e.x >= V_WIDTH - zm - e.radius - 4 ||
+                  e.y <= zm + 45 + e.radius + 4 || e.y >= V_HEIGHT - zm - 30 - e.radius - 4) {
+                e.hp = 0;
+                spawnParticles(e.x, e.y, '#84cc16', 10, 6);
+                STATE.score += 15;
+              }
+            }
+          });
+        }
+      }
+
+      // 9. Swarm Missiles Update (Homing & Corkscrew)
+      if (STATE.missiles && STATE.missiles.length > 0) {
+        STATE.missiles.forEach(function(ms) {
+          ms.life--;
+          // Find nearest enemy if none locked
+          if (!ms.target || ms.target.hp <= 0) {
+            let closest = null, minD = 9999;
+            enemies.forEach(function(e) {
+              const d = Math.hypot(e.x - ms.x, e.y - ms.y);
+              if (d < minD) { minD = d; closest = e; }
+            });
+            ms.target = closest;
+          }
+          if (ms.target) {
+            const angle = Math.atan2(ms.target.y - ms.y, ms.target.x - ms.x);
+            ms.vx += Math.cos(angle) * 0.75;
+            ms.vy += Math.sin(angle) * 0.75;
+            const spd = Math.hypot(ms.vx, ms.vy);
+            if (spd > ms.speed) { ms.vx = (ms.vx/spd)*ms.speed; ms.vy = (ms.vy/spd)*ms.speed; }
+          }
+          ms.x += ms.vx;
+          ms.y += ms.vy;
+          // Corkscrew trail particles
+          if (ms.life % 2 === 0) {
+            particles.push({
+              x: ms.x, y: ms.y,
+              vx: (Math.random()-0.5)*1.5, vy: (Math.random()-0.5)*1.5,
+              life: 14, maxLife: 14, color: '#f43f5e', radius: 2.2
+            });
+          }
+          // Hit check
+          enemies.forEach(function(e) {
+            if (e.hp > 0 && Math.hypot(e.x - ms.x, e.y - ms.y) < e.radius + 8) {
+              e.hp = 0;
+              ms.life = 0;
+              spawnParticles(e.x, e.y, '#f43f5e', 10, 6);
+              STATE.score += 10;
+            }
+          });
+        });
+        STATE.missiles = STATE.missiles.filter(function(ms) { return ms.life > 0; });
+      }
+
+      // 10. Railgun Scorch line decay
+      if (STATE.railgunSlug) {
+        STATE.railgunSlug.life--;
+        if (STATE.railgunSlug.life <= 0) STATE.railgunSlug = null;
+      }
 
       // 1. Full-screen Laser Collision (850px range, point-to-segment distance)
       if (STATE.laserActive > 0) {
@@ -858,6 +1000,38 @@
         ctx.beginPath();
         ctx.arc(0, 0, 1.8, 0, Math.PI * 2);
         ctx.fill();
+      } else if (kind === 'mines') {
+        // 3 clustered dots / landmines
+        ctx.beginPath(); ctx.arc(-s*0.4, s*0.3, 2, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(s*0.4, s*0.3, 2, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(0, -s*0.4, 2, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(-s*0.4, s*0.3); ctx.lineTo(0, -s*0.4); ctx.lineTo(s*0.4, s*0.3); ctx.stroke();
+      } else if (kind === 'chrono') {
+        // Minimalist stopwatch / hourglass
+        ctx.beginPath(); ctx.arc(0, 0, s*0.85, 0, Math.PI*2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -s*0.5); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(s*0.4, 0); ctx.stroke();
+      } else if (kind === 'decoy') {
+        // Hologram dashed ghost orb
+        ctx.setLineDash([2, 2]);
+        ctx.beginPath(); ctx.arc(0, 0, s*0.8, 0, Math.PI*2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(0, 0, 2, 0, Math.PI*2); ctx.fill();
+      } else if (kind === 'repulsor') {
+        // Double outward shockwave chevrons < >
+        ctx.beginPath();
+        ctx.moveTo(-s*0.2, -s*0.6); ctx.lineTo(-s*0.7, 0); ctx.lineTo(-s*0.2, s*0.6);
+        ctx.moveTo(s*0.2, -s*0.6); ctx.lineTo(s*0.7, 0); ctx.lineTo(s*0.2, s*0.6);
+        ctx.stroke();
+      } else if (kind === 'missiles') {
+        // Angled rocket chevron
+        ctx.beginPath();
+        ctx.moveTo(0, -s*0.85); ctx.lineTo(s*0.6, s*0.7); ctx.lineTo(0, s*0.3); ctx.lineTo(-s*0.6, s*0.7);
+        ctx.closePath(); ctx.fill();
+      } else if (kind === 'railgun') {
+        // Heavy sniper crosshair & slug
+        ctx.beginPath(); ctx.arc(0, 0, s*0.8, 0, Math.PI*2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-s, 0); ctx.lineTo(s, 0); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, -s); ctx.lineTo(0, s); ctx.stroke();
       } else {
         ctx.beginPath();
         ctx.arc(0, 0, s * 0.5, 0, Math.PI * 2);
@@ -914,6 +1088,65 @@ function draw() {
         ctx.lineWidth = 4;
         ctx.arc(STATE.shockwavePos.x, STATE.shockwavePos.y, STATE.shockwaveRing, 0, Math.PI * 2);
         ctx.stroke();
+        ctx.restore();
+      }
+
+      // Mines Visual
+      if (STATE.mines && STATE.mines.length > 0) {
+        ctx.save();
+        STATE.mines.forEach(function(m) {
+          const pr = m.radius + Math.sin(m.pulse) * 2;
+          ctx.strokeStyle = 'rgba(255, 153, 0, 0.4)';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([2, 2]);
+          ctx.beginPath(); ctx.arc(m.x, m.y, 65, 0, Math.PI * 2); ctx.stroke();
+
+          ctx.fillStyle = '#ff9900';
+          ctx.beginPath(); ctx.arc(m.x, m.y, pr, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath(); ctx.arc(m.x, m.y, 2.5, 0, Math.PI * 2); ctx.fill();
+        });
+        ctx.restore();
+      }
+
+      // Decoy Visual
+      if (STATE.decoy) {
+        ctx.save();
+        const dr = 14 + Math.sin(STATE.decoy.pulse) * 3;
+        // Sonar ripples
+        ctx.strokeStyle = 'rgba(6, 182, 212, 0.5)';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(STATE.decoy.x, STATE.decoy.y, (STATE.decoy.life % 40) * 4, 0, Math.PI*2); ctx.stroke();
+
+        ctx.strokeStyle = '#06b6d4';
+        ctx.setLineDash([4, 4]);
+        ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.arc(STATE.decoy.x, STATE.decoy.y, dr, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      }
+
+      // Swarm Missiles Visual
+      if (STATE.missiles && STATE.missiles.length > 0) {
+        ctx.save();
+        STATE.missiles.forEach(function(ms) {
+          ctx.fillStyle = '#f43f5e';
+          ctx.beginPath(); ctx.arc(ms.x, ms.y, 3.5, 0, Math.PI*2); ctx.fill();
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath(); ctx.arc(ms.x, ms.y, 1.5, 0, Math.PI*2); ctx.fill();
+        });
+        ctx.restore();
+      }
+
+      // Railgun Scorch line
+      if (STATE.railgunSlug) {
+        ctx.save();
+        const a = STATE.railgunSlug.life / 25;
+        ctx.strokeStyle = 'rgba(225, 29, 72, ' + a + ')';
+        ctx.lineWidth = 12;
+        ctx.beginPath(); ctx.moveTo(STATE.railgunSlug.x1, STATE.railgunSlug.y1); ctx.lineTo(STATE.railgunSlug.x2, STATE.railgunSlug.y2); ctx.stroke();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(STATE.railgunSlug.x1, STATE.railgunSlug.y1); ctx.lineTo(STATE.railgunSlug.x2, STATE.railgunSlug.y2); ctx.stroke();
         ctx.restore();
       }
 
